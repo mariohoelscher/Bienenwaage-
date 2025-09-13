@@ -1,16 +1,141 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Hölschers Bienen</title>
-<link rel="manifest" href="manifest.json" />
-<!-- Styles und Rest wie im letzten Beispiel... -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hölschers Bienen</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { background:#111; color:#eee; font-family:sans-serif; margin:0; padding:0; }
+    h1 { text-align:center; margin:10px; }
+    .controls { text-align:center; margin:10px; }
+    .wrapper { display:grid; grid-template-columns:1fr; gap:12px; padding:10px; max-width:1100px; margin:auto; }
+    @media(min-width:900px){ .wrapper{grid-template-columns:1fr 1fr;} }
+    .card { background:#1a1a1a; padding:12px; border-radius:10px; box-shadow:0 0 8px rgba(0,0,0,0.5); }
+    .card h2 { margin:0 0 8px; display:flex; justify-content:space-between; }
+    canvas { background:#000; border-radius:8px; width:100%!important; height:240px!important; }
+    .battery { width:220px; height:64px; border-radius:8px; border:4px solid #ccc; margin:10px auto; position:relative; cursor:pointer; }
+    .battery::after { content:''; position:absolute; top:18px; right:-16px; width:12px; height:28px; background:#ccc; border-radius:2px; }
+    .battery-level { height:100%; width:10%; border-radius:4px 0 0 4px; background:lime; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#000; }
+    #overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none; justify-content:center; align-items:center; flex-direction:column; z-index:1000; color:white; }
+    #overlay button { margin-top:20px; padding:8px; }
+    #gearBtn { position:fixed; right:12px; top:12px; }
+    #settingsPanel { display:none; position:fixed; right:12px; top:50px; background:#222; padding:12px; border-radius:8px; border:1px solid #333; }
+  </style>
 </head>
 <body>
-<h1>Hölschers Bienen</h1>
-<!-- Inhalte hier -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <h1>Hölschers Bienen</h1>
+  <div class="controls">
+    <label>Zeitraum:
+      <select id="timeRange">
+        <option value="today">Heute</option>
+        <option value="24h">Letzte 24h</option>
+        <option value="3d">3 Tage</option>
+        <option value="7d">7 Tage</option>
+        <option value="30d">30 Tage</option>
+      </select>
+    </label>
+    <button id="reloadBtn">🔄 Neu laden</button>
+  </div>
+
+  <div class="wrapper">
+    <div class="card"><h2>Gewicht <span id="latestWeight"></span></h2><canvas id="chartWeight"></canvas></div>
+    <div class="card"><h2>Temperatur innen <span id="latestTemp"></span></h2><canvas id="chartTemp"></canvas></div>
+    <div class="card"><h2>Temperatur außen <span id="latestOut"></span></h2><canvas id="chartOut"></canvas></div>
+    <div class="card"><h2>Luftfeuchtigkeit <span id="latestHum"></span></h2><canvas id="chartHum"></canvas></div>
+    <div class="card"><h2>Batterie <span id="latestBat"></span></h2>
+      <div class="battery" id="battery"><div class="battery-level" id="batteryLevel">--%</div></div>
+      <div id="batteryForecast" style="text-align:center;font-size:0.9em;color:#aaa"></div>
+    </div>
+    <div class="card"><h2>Wartung</h2>
+      <label>Start: <input type="datetime-local" id="maintStart"></label><br>
+      <label>Ende: <input type="datetime-local" id="maintEnd"></label><br>
+      <button id="saveMaint">Speichern</button>
+      <button id="clearMaint">Löschen</button>
+      <div id="maintInfo"></div>
+    </div>
+  </div>
+
+  <button id="gearBtn">⚙️</button>
+  <div id="settingsPanel">
+    <label><input type="checkbox" id="notifBattery"> Batterie <10%</label><br>
+    <label><input type="checkbox" id="notifSwarm"> Schwarmalarm</label><br>
+    <label><input type="checkbox" id="notifFrost"> Frostwarnung</label>
+  </div>
+
+  <div id="overlay"><div id="overlayContent"></div><button onclick="hideOverlay()">Schließen</button></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <script>
+    const channelId=1228597;
+    const apiUrl=`https://api.thingspeak.com/channels/${channelId}/feeds.json?results=500`;
+
+    const ctxW=document.getElementById('chartWeight').getContext('2d');
+    const ctxT=document.getElementById('chartTemp').getContext('2d');
+    const ctxO=document.getElementById('chartOut').getContext('2d');
+    const ctxH=document.getElementById('chartHum').getContext('2d');
+
+    let chartW,chartT,chartO,chartH;
+
+    function voltPct(v){const full=12.5,empty=8.4;return Math.max(0,Math.min(100,(v-empty)/(full-empty)*100));}
+
+    function makeChart(ctx,label,data,labels){
+      return new Chart(ctx,{type:'line',
+        data:{labels:labels,datasets:[{label,data,borderColor:'orange',fill:false}]},
+        options:{scales:{x:{type:'time',time:{unit:'hour'}}}}
+      });
+    }
+
+    function showOverlay(title,values){
+      const min=Math.min(...values).toFixed(2);
+      const max=Math.max(...values).toFixed(2);
+      const avg=(values.reduce((a,b)=>a+b,0)/values.length).toFixed(2);
+      document.getElementById('overlayContent').innerHTML=`<h2>${title}</h2><p>Min: ${min}<br>Max: ${max}<br>Ø: ${avg}</p>`;
+      document.getElementById('overlay').style.display='flex';
+    }
+    function hideOverlay(){document.getElementById('overlay').style.display='none';}
+
+    async function loadData(){
+      const res=await fetch(apiUrl); const js=await res.json(); const feeds=js.feeds;
+      const times=feeds.map(f=>new Date(f.created_at));
+      const f1=feeds.map(f=>parseFloat(f.field1));
+      const f2=feeds.map(f=>parseFloat(f.field2));
+      const f3=feeds.map(f=>parseFloat(f.field3));
+      const f5=feeds.map(f=>f.field5?parseFloat(f.field5):null);
+      const f6=feeds.map(f=>parseFloat(f.field6));
+
+      document.getElementById('latestWeight').textContent=f6[f6.length-1]+" kg";
+      document.getElementById('latestTemp').textContent=f1[f1.length-1]+" °C";
+      document.getElementById('latestOut').textContent=f2[f2.length-1]+" °C";
+      document.getElementById('latestHum').textContent=f3[f3.length-1]+" %";
+
+      const lastBatt=[...f5].reverse().find(x=>x!==null);
+      if(lastBatt){const pct=voltPct(lastBatt).toFixed(1);
+        document.getElementById('latestBat').textContent=lastBatt+" V ("+pct+"%)";
+        const lvl=document.getElementById('batteryLevel'); lvl.style.width=pct+"%"; lvl.textContent=pct+"%";
+      }
+
+      chartW&&chartW.destroy(); chartT&&chartT.destroy(); chartO&&chartO.destroy(); chartH&&chartH.destroy();
+      chartW=makeChart(ctxW,'Gewicht',f6,times);
+      chartT=makeChart(ctxT,'Temp innen',f1,times);
+      chartO=makeChart(ctxO,'Temp außen',f2,times);
+      chartH=makeChart(ctxH,'Luftfeuchte',f3,times);
+
+      document.getElementById('chartWeight').onclick=()=>showOverlay("Gewicht",f6);
+      document.getElementById('chartTemp').onclick=()=>showOverlay("Temp innen",f1);
+      document.getElementById('chartOut').onclick=()=>showOverlay("Temp außen",f2);
+      document.getElementById('chartHum').onclick=()=>showOverlay("Luftfeuchte",f3);
+      document.getElementById('battery').onclick=()=>showOverlay("Batterie",f5.filter(x=>x));
+    }
+
+    loadData();
+    document.getElementById('reloadBtn').onclick=loadData;
+
+    document.getElementById('gearBtn').onclick=()=>{
+      const p=document.getElementById('settingsPanel');
+      p.style.display=p.style.display==='block'?'none':'block';
+    }
+  </script>
 </body>
 </html>
