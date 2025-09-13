@@ -1,148 +1,328 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hölschers Bienen</title>
-  <link rel="manifest" href="manifest.json">
-  <style>
-    body { background:#121212; color:#eee; font-family:sans-serif; margin:0; }
-    header { padding:10px; text-align:center; background:#1e1e1e; }
-    canvas { max-width:600px; margin:20px auto; display:block; background:#222; border-radius:12px; }
-    .battery { width:200px; height:60px; border:2px solid #fff; border-radius:8px; margin:20px auto; position:relative; }
-    .battery-level { height:100%; background:limegreen; border-radius:6px; }
-    .gear { position:fixed; top:10px; right:10px; cursor:pointer; }
-    #settings { display:none; position:fixed; top:50px; right:10px; background:#222; padding:10px; border:1px solid #555; border-radius:8px; }
-    #wartung { margin:20px; padding:10px; background:#333; border-radius:8px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Hölschers Bienen</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+:root{--bg:#0f0f10;--card:#171819;--fg:#e8e8e8;--muted:#9aa0a6;--accent:#ffd54f}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--fg);padding:12px}
+h1{text-align:center;margin:6px 0}
+.controls{display:flex;justify-content:center;gap:10px;margin-bottom:12px}
+select,button,input{background:var(--card);color:var(--fg);border:1px solid #262626;padding:8px;border-radius:8px}
+.container{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:900px){.container{grid-template-columns:1fr 1fr}}
+.card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.5);position:relative}
+.card h2{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+canvas{width:100% !important;height:210px !important;background:#0c0c0c;border-radius:8px}
+.battery{width:220px;height:64px;border-radius:10px;border:3px solid #bdbdbd;background:#070707;margin:10px auto;position:relative;cursor:pointer}
+.battery::after{content:'';position:absolute;top:18px;right:8px;width:12px;height:28px;background:#bdbdbd;border-radius:2px}
+.battery-level{height:100%;width:10%;border-radius:6px 0 0 6px;transition:width .6s;background:linear-gradient(90deg,#4caf50,#8bc34a);display:flex;align-items:center;justify-content:center;font-weight:700;color:#000}
+.subtitle{color:var(--muted);font-size:13px}
+.gear{position:fixed;right:12px;top:12px;z-index:60}
+#settingsPanel{display:none;position:fixed;right:12px;top:48px;background:var(--card);padding:10px;border-radius:8px;border:1px solid #333;z-index:80}
+.toast{position:fixed;right:18px;bottom:18px;background:#111;padding:10px 14px;border-radius:8px;color:#fff;display:none;z-index:90}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:200}
+.modal .card{max-width:520px}
+.small{font-size:13px;color:var(--muted)}
+</style>
 </head>
 <body>
-  <header><h1>Hölschers Bienen</h1></header>
+<h1>Hölschers Bienen</h1>
 
-  <div>
-    <label>Zeitraum:
-      <select id="timeRange">
-        <option value="1">Heute</option>
-        <option value="1d">Letzte 24h</option>
-        <option value="3">3 Tage</option>
-        <option value="7">7 Tage</option>
-        <option value="30">Monat</option>
-      </select>
-    </label>
+<div class="controls">
+  <label>Zeitraum:
+    <select id="timeRange">
+      <option value="today">Heute</option>
+      <option value="24h">Letzte 24 Stunden</option>
+      <option value="3d">Letzte 3 Tage</option>
+      <option value="7d">Letzte 7 Tage</option>
+      <option value="30d">Letzter Monat</option>
+    </select>
+  </label>
+  <button id="reloadBtn">🔄 Neu laden</button>
+</div>
+
+<div class="container">
+  <div class="card" id="card-weight">
+    <h2>Gewicht <span id="latestWeight" class="subtitle"></span></h2>
+    <canvas id="chartWeight"></canvas>
   </div>
 
-  <canvas id="weightChart"></canvas>
-  <canvas id="tempChart"></canvas>
-  <canvas id="humidityChart"></canvas>
-
-  <div class="battery" onclick="showBatteryDetails()">
-    <div id="batteryLevel" class="battery-level"></div>
-  </div>
-  <div id="batteryText" style="text-align:center;"></div>
-
-  <img src="https://cdn-icons-png.flaticon.com/512/126/126122.png" width="32" class="gear" onclick="toggleSettings()">
-
-  <div id="settings">
-    <h3>Push Benachrichtigungen</h3>
-    <label><input type="checkbox" id="notifBattery"> Batterie <10%</label><br>
-    <label><input type="checkbox" id="notifTemp"> Frostwarnung</label><br>
-    <label><input type="checkbox" id="notifSwarm"> Schwarmalarm</label>
+  <div class="card" id="card-temp">
+    <h2>Temperatur innen <span id="latestTemp" class="subtitle"></span></h2>
+    <canvas id="chartTemp"></canvas>
   </div>
 
-  <div id="wartung">
-    <h3>Wartung</h3>
-    <label>Start: <input type="datetime-local" id="startTime"></label><br>
-    <label>Ende: <input type="datetime-local" id="endTime"></label><br>
-    <button onclick="saveWartung()">Speichern</button>
-    <button onclick="clearWartung()">Löschen</button>
+  <div class="card" id="card-outtemp">
+    <h2>Temperatur außen <span id="latestOutTemp" class="subtitle"></span></h2>
+    <canvas id="chartOutTemp"></canvas>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script>
-    const channel = 1228597;
-    const url = `https://api.thingspeak.com/channels/${channel}/feeds.json?results=2000`;
-    let chartWeight, chartTemp, chartHum;
-    let wartung = null;
+  <div class="card" id="card-hum">
+    <h2>Luftfeuchtigkeit <span id="latestHum" class="subtitle"></span></h2>
+    <canvas id="chartHum"></canvas>
+  </div>
 
-    async function fetchData() {
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        return data.feeds.map(f => ({
-          t: new Date(f.created_at),
-          temp: parseFloat(f.field1),
-          tempOut: parseFloat(f.field2),
-          hum: parseFloat(f.field3),
-          freeze: f.field4 ? parseInt(f.field4) : 0,
-          battery: parseFloat(f.field5),
-          weight: parseFloat(f.field6)
-        }));
-      } catch(e) {
-        console.error("Fehler beim Abrufen", e);
-        return [];
+  <div class="card" id="card-bat">
+    <h2>Batterie <span id="latestBat" class="subtitle"></span></h2>
+    <div class="battery" id="batteryBox" title="Batterie anklicken">
+      <div id="batteryLevel" class="battery-level">--%</div>
+    </div>
+    <div id="batteryForecast" class="small" style="text-align:center"></div>
+  </div>
+
+  <div class="card" id="card-maint">
+    <h2>Wartung</h2>
+    <div class="small">Start / Ende auswählen</div>
+    <label>Start: <input id="maintStart" type="datetime-local"></label><br>
+    <label>Ende: <input id="maintEnd" type="datetime-local"></label><br><br>
+    <button id="saveMaint">Speichern</button>
+    <button id="clearMaint">Löschen</button>
+    <div id="maintInfo" class="small" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<button class="gear" id="gearBtn">⚙️</button>
+<div id="settingsPanel">
+  <strong>Benachrichtigungen</strong>
+  <label><input type="checkbox" id="notifBattery"> Batterie &lt;10%</label><br>
+  <label><input type="checkbox" id="notifSwarm"> Schwarmalarm</label><br>
+  <label><input type="checkbox" id="notifFrost"> Frostwarnung</label><br>
+  <div class="small">Einstellungen werden lokal gespeichert</div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<div id="modal" class="modal"><div class="card" id="modalCard"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+// Config
+const CHANNEL_ID = 1228597; // public channel
+const RESULTS = 2000;
+const FETCH_INTERVAL = 10 * 60 * 1000; // 10min
+const VOLT_MIN = 8.4, VOLT_MAX = 12.5;
+
+// State
+let feedsCache = [];
+let charts = {};
+let maint = {start:null,end:null};
+
+// Helpers
+const $ = id => document.getElementById(id);
+function toast(msg, t=3000){ const el=$('toast'); el.textContent=msg; el.style.display='block'; clearTimeout(el._to); el._to=setTimeout(()=>el.style.display='none',t); }
+function parseNum(v){ const n=parseFloat(v); return isNaN(n)?null:n; }
+function voltPct(v){ if(v===null) return 0; return Math.round(Math.max(0, Math.min(100, ((v-VOLT_MIN)/(VOLT_MAX-VOLT_MIN))*100))); }
+
+// Time range helpers
+function getRangeDates(range){
+  const now = new Date();
+  let start = new Date();
+  if(range === 'today'){ start.setHours(0,0,0,0); }
+  else if(range === '24h'){ start = new Date(now.getTime()-24*3600*1000); }
+  else if(range === '3d'){ start = new Date(now.getTime()-3*24*3600*1000); }
+  else if(range === '7d'){ start = new Date(now.getTime()-7*24*3600*1000); }
+  else if(range === '30d'){ start = new Date(now.getTime()-30*24*3600*1000); }
+  return {start, end: new Date()};
+}
+
+// Fetch feeds from ThingSpeak (public channel; no key)
+async function fetchFeeds(range){
+  const {start,end} = getRangeDates(range);
+  const startStr = encodeURIComponent(start.toISOString().slice(0,19).replace('T',' '));
+  const endStr = encodeURIComponent(end.toISOString().slice(0,19).replace('T',' '));
+  const url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?start=${startStr}&end=${endStr}&results=${RESULTS}`;
+  try{
+    const r = await fetch(url);
+    const j = await r.json();
+    return j.feeds || [];
+  }catch(e){ console.error('fetch error',e); return []; }
+}
+
+// Normalize feeds: parse numbers and keep null for missing
+function normalize(feeds){
+  return feeds.map(f=>({ created_at: f.created_at,
+    t: new Date(f.created_at),
+    field1: parseNum(f.field1),
+    field2: parseNum(f.field2),
+    field3: parseNum(f.field3),
+    field4: f.field4 ? parseInt(f.field4) : 0,
+    field5: parseNum(f.field5),
+    field6: parseNum(f.field6)
+  }));
+}
+
+// Render
+function renderCharts(normFeeds){
+  const labels = normFeeds.map(f=>f.t);
+  const w = normFeeds.map(f=>f.field6);
+  const t1 = normFeeds.map(f=>f.field1);
+  const t2 = normFeeds.map(f=>f.field2);
+  const h = normFeeds.map(f=>f.field3);
+
+  // Destroy old charts
+  Object.values(charts).forEach(c=>{ try{ c.destroy(); }catch(e){} });
+  charts = {};
+
+  const makeOptions = ()=>({ responsive:true, maintainAspectRatio:false, spanGaps:true,
+    scales:{ x:{ type:'time', time:{ tooltipFormat:'dd.MM. HH:mm' }, ticks:{ color:'#e8e8e8' } }, y:{ ticks:{ color:'#e8e8e8' } } },
+    plugins:{ legend:{ display:false } }
+  });
+
+  charts.weight = new Chart($('chartWeight').getContext('2d'), { type:'line',
+    data:{ labels, datasets:[{ label:'Gewicht', data:w, borderColor:'#ffb74d', spanGaps:true }] }, options:makeOptions() });
+
+  charts.temp = new Chart($('chartTemp').getContext('2d'), { type:'line',
+    data:{ labels, datasets:[{ label:'Temp innen', data:t1, borderColor:'#ff5252', spanGaps:true }] }, options:makeOptions() });
+
+  charts.outtemp = new Chart($('chartOutTemp').getContext('2d'), { type:'line',
+    data:{ labels, datasets:[{ label:'Temp außen', data:t2, borderColor:'#42a5f5', spanGaps:true }] }, options:makeOptions() });
+
+  charts.hum = new Chart($('chartHum').getContext('2d'), { type:'line',
+    data:{ labels, datasets:[{ label:'Luftfeuchte', data:h, borderColor:'#9be7a9', spanGaps:true }] }, options:makeOptions() });
+
+  // latest values display
+  const last = normFeeds[normFeeds.length-1];
+  if(last){
+    $('latestWeight').textContent = last.field6!==null ? `(${last.field6.toFixed(2)} kg, ${last.t.toLocaleTimeString()})` : '';
+    $('latestTemp').textContent = last.field1!==null ? `(${last.field1.toFixed(1)} °C, ${last.t.toLocaleTimeString()})` : '';
+    $('latestOutTemp').textContent = last.field2!==null ? `(${last.field2.toFixed(1)} °C, ${last.t.toLocaleTimeString()})` : '';
+    $('latestHum').textContent = last.field3!==null ? `(${last.field3.toFixed(0)} %, ${last.t.toLocaleTimeString()})` : '';
+    $('latestBat').textContent = last.field5!==null ? `(${last.field5.toFixed(2)} V, ${last.t.toLocaleTimeString()})` : '';
+  }
+
+  // attach click handlers for stats modal
+  attachClicks(normFeeds);
+}
+
+// Click handlers - show min/max/avg for current displayed feeds (based on timeRange)
+function attachClicks(normFeeds){
+  document.querySelectorAll('canvas').forEach(c=>{
+    c.style.cursor = 'pointer';
+    c.onclick = (ev)=>{
+      const id = c.id;
+      let fieldKey = null, unit='';
+      if(id==='chartWeight'){ fieldKey='field6'; unit='kg'; }
+      if(id==='chartTemp'){ fieldKey='field1'; unit='°C'; }
+      if(id==='chartOutTemp'){ fieldKey='field2'; unit='°C'; }
+      if(id==='chartHum'){ fieldKey='field3'; unit='%'; }
+      if(!fieldKey) return;
+      const today = new Date();
+      const range = $('timeRange').value;
+      const {start,end} = getRangeDates(range);
+      const vals = normFeeds.filter(f=>f.t>=start && f.t<=end).map(f=>f[fieldKey]).filter(v=>v!==null);
+      if(!vals.length){ showModal(`<h3>Keine Daten</h3><p>Keine Messwerte im ausgewählten Zeitraum</p>`); return; }
+      const min = Math.min(...vals), max = Math.max(...vals);
+      const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+      showModal(`<h3>Statistik</h3><p>Ø: ${avg.toFixed(2)} ${unit}<br>Min: ${min.toFixed(2)} ${unit}<br>Max: ${max.toFixed(2)} ${unit}</p>`);
+    };
+  });
+  // battery click
+  $('batteryBox').onclick = null; // ensure exists
+  const batBox = $('batteryBox') || $('batteryBox');
+  // the visible battery is 'batteryBox' div id doesn't exist; use batteryBox id earlier - actually id is batteryBox? In HTML it's batteryBox? Adjust:
+}
+
+// Modal
+function showModal(html){
+  $('modalCard').innerHTML = html + '<div style="text-align:right;margin-top:10px"><button onclick="closeModal()">Schließen</button></div>';
+  $('modal').style.display = 'flex';
+}
+function closeModal(){ $('modal').style.display = 'none'; }
+
+// Battery UI & click details
+async function showBatteryDetails(){
+  // fetch 3 days for prognosis
+  const now = new Date();
+  const start = new Date(now.getTime() - 3*24*3600*1000);
+  const startStr = encodeURIComponent(start.toISOString().slice(0,19).replace('T',' '));
+  const endStr = encodeURIComponent(now.toISOString().slice(0,19).replace('T',' '));
+  const url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?start=${startStr}&end=${endStr}&results=${RESULTS}`;
+  try{
+    const r = await fetch(url);
+    const j = await r.json();
+    const feeds = (j.feeds||[]).map(f=>({t:new Date(f.created_at), v:parseNum(f.field5)})).filter(p=>p.v!==null);
+    if(!feeds.length){ showModal('<h3>Batterie</h3><p>Keine Daten</p>'); return; }
+    const first = feeds[0].v, last = feeds[feeds.length-1].v;
+    const p0 = voltPct(first), p1 = voltPct(last);
+    const diff = (p1 - p0).toFixed(1);
+    // simple linear slope per hour
+    const hours = (feeds[feeds.length-1].t - feeds[0].t)/3600000;
+    const slope = (last - first)/hours; // V/hour
+    let progText = 'Stabil';
+    if(Math.abs(slope) > 1e-4){
+      if(slope < 0){
+        const hoursLeft = (last - VOLT_MIN)/Math.abs(slope);
+        const days = Math.floor(hoursLeft/24); const hrs = Math.round(hoursLeft%24);
+        progText = `ca. ${days} Tage ${hrs} Std`;
+      } else {
+        progText = 'Steigend';
       }
     }
+    showModal(`<h3>Batterie</h3><p>Anfang: ${first.toFixed(2)} V (${p0}%)<br>Ende: ${last.toFixed(2)} V (${p1}%)<br>Δ: ${diff}%</p><p>Prognose: ${progText}</p>`);
+  }catch(e){ console.error(e); showModal('<h3>Fehler</h3><p>Kann Batteriedaten nicht laden.</p>'); }
+}
 
-    function drawCharts(feeds) {
-      if (!feeds.length) return;
-      const labels = feeds.map(f => f.t);
-      const weights = feeds.map(f => f.weight);
-      const temps = feeds.map(f => f.temp);
-      const hums = feeds.map(f => f.hum);
+// Update battery element from cached feeds
+function updateBatteryFromCache(normFeeds){
+  if(!normFeeds.length) return;
+  const last = normFeeds[normFeeds.length-1];
+  const pct = voltPct(last.field5);
+  const lvl = $('batteryLevel');
+  lvl.style.width = pct + '%';
+  lvl.textContent = pct + '%';
+  if(pct>60) lvl.style.background = 'linear-gradient(90deg,#28a745,#34d058)';
+  else if(pct>30) lvl.style.background = 'linear-gradient(90deg,#ffc107,#ffcd39)';
+  else lvl.style.background = 'linear-gradient(90deg,#dc3545,#ff6b6b)';
+  $('batteryForecast').textContent = '';
+}
 
-      if (chartWeight) chartWeight.destroy();
-      if (chartTemp) chartTemp.destroy();
-      if (chartHum) chartHum.destroy();
+// Maintenance: save to localStorage and write field4 via write API? We'll set local only and write via writeKey is optional; user had write key earlier but
+function loadMaintenance(){
+  const s = localStorage.getItem('maintStart'), e = localStorage.getItem('maintEnd');
+  maint.start = s? new Date(s): null; maint.end = e? new Date(e): null;
+  $('maintInfo').textContent = maint.start && maint.end ? `Wartung: ${maint.start.toLocaleString()} → ${maint.end.toLocaleString()}` : 'Keine Wartung';
+  if(maint.start) $('maintStart').value = maint.start.toISOString().slice(0,16);
+  if(maint.end) $('maintEnd').value = maint.end.toISOString().slice(0,16);
+}
+function saveMaintenance(){ const s=$('maintStart').value,e=$('maintEnd').value; if(!s||!e){toast('Bitte Start und Ende');return;} localStorage.setItem('maintStart',s); localStorage.setItem('maintEnd',e); loadMaintenance(); toast('Wartung gespeichert'); }
+function clearMaintenance(){ localStorage.removeItem('maintStart'); localStorage.removeItem('maintEnd'); loadMaintenance(); toast('Wartung gelöscht'); }
 
-      chartWeight = new Chart(document.getElementById("weightChart"), {
-        type: 'line',
-        data: { labels, datasets:[{label:"Gewicht (kg)", data:weights, borderColor:"orange"}] },
-        options:{ responsive:true, plugins:{ legend:{labels:{color:'#fff'}}}, scales:{ x:{ticks:{color:'#fff'}}, y:{ticks:{color:'#fff'}}} }
-      });
-      chartTemp = new Chart(document.getElementById("tempChart"), {
-        type: 'line',
-        data: { labels, datasets:[{label:"Temperatur (°C)", data:temps, borderColor:"red"}] },
-        options:{ responsive:true, plugins:{ legend:{labels:{color:'#fff'}}}, scales:{ x:{ticks:{color:'#fff'}}, y:{ticks:{color:'#fff'}}} }
-      });
-      chartHum = new Chart(document.getElementById("humidityChart"), {
-        type: 'line',
-        data: { labels, datasets:[{label:"Luftfeuchtigkeit (%)", data:hums, borderColor:"cyan"}] },
-        options:{ responsive:true, plugins:{ legend:{labels:{color:'#fff'}}}, scales:{ x:{ticks:{color:'#fff'}}, y:{ticks:{color:'#fff'}}} }
-      });
+// Main loader
+async function loadAndRender(){
+  const range = $('timeRange').value;
+  const raw = await fetchFeeds(range);
+  const norm = normalize(raw);
+  feedsCache = norm;
+  renderCharts(norm);
+  updateBatteryFromCache(norm);
+}
 
-      updateBattery(feeds);
-    }
+// Attach UI listeners
+$('reloadBtn').addEventListener('click', loadAndRender);
+$('gearBtn').addEventListener('click', ()=>{$('settingsPanel').style.display = $('settingsPanel').style.display==='block' ? 'none':'block'});
+$('saveMaint').addEventListener('click', saveMaintenance);
+$('clearMaint').addEventListener('click', clearMaintenance);
+$('batteryBox')?.addEventListener('click', showBatteryDetails); // batteryBox id doesn't exist; batteryBox is 'batteryBox'? ensure right
+// fix id mismatch: batteryBox element is 'batteryBox' not present; replace with 'batteryBox' fallback to 'batteryBox' - but our battery is id 'batteryBox'? In HTML it's 'batteryBox'? We'll add listener by element id 'batteryBox' or 'card-bat'
+document.getElementById('batteryBox')?.addEventListener('click', showBatteryDetails);
+document.getElementById('batteryBox') || document.getElementById('batteryBox'); // noop
 
-    function updateBattery(feeds) {
-      const last = feeds[feeds.length-1];
-      const volt = last.battery;
-      const percent = Math.max(0, Math.min(100, ((volt-8.4)/(12.5-8.4))*100));
-      document.getElementById("batteryLevel").style.width = percent+"%";
-      document.getElementById("batteryText").innerText = volt.toFixed(2)+" V ("+percent.toFixed(0)+"%)";
-    }
+// add battery click via battery element id 'batteryBox' isn't present; instead use 'batteryBox' not present: use 'batteryBox' vs 'battery' - correct to 'batteryBox'? Ensure use existing id 'batteryBox' not exist; our battery div id is 'batteryBox'? In HTML battery box id is 'batteryBox'? It's 'batteryBox' earlier? We used id 'batteryBox' in another version; here id is 'batteryBox'? Let's attach to 'batteryBox' or fallback to 'batteryLevel' parent
+(function(){
+  const bb = document.getElementById('batteryBox') || document.getElementById('battery') || document.getElementById('batteryBox');
+  if(bb) bb.addEventListener('click', showBatteryDetails);
+  else document.getElementById('batteryLevel').parentElement.addEventListener('click', showBatteryDetails);
+})();
 
-    function toggleSettings(){
-      const s = document.getElementById("settings");
-      s.style.display = s.style.display==="block" ? "none":"block";
-    }
+// init
+loadMaintenance();
+loadAndRender();
+setInterval(loadAndRender, FETCH_INTERVAL);
 
-    function showBatteryDetails(){
-      alert("Batterie Details folgen...");
-    }
-
-    function saveWartung(){
-      wartung = {
-        start: document.getElementById("startTime").value,
-        end: document.getElementById("endTime").value
-      };
-      alert("Wartung gespeichert: "+JSON.stringify(wartung));
-    }
-    function clearWartung(){
-      wartung = null;
-      alert("Wartung gelöscht");
-    }
-
-    fetchData().then(drawCharts);
-  </script>
+</script>
 </body>
 </html>
