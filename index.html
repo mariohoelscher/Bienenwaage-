@@ -102,6 +102,29 @@
       border-radius: 4px 0 0 4px;
       transition: width 0.5s;
     }
+    /* Wartungsbereich */
+    .maintenance {
+      width: 90%;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #1e1e1e;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .maintenance input {
+      margin: 0.5rem;
+      padding: 0.3rem;
+    }
+    .maintenance button {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -145,6 +168,16 @@
     </div>
   </div>
 
+  <!-- Wartungsbereich -->
+  <div class="maintenance">
+    <h3>Wartung (Freeze Gewicht)</h3>
+    <label>Start: <input type="datetime-local" id="freezeStart"></label>
+    <label>Ende: <input type="datetime-local" id="freezeEnd"></label>
+    <br>
+    <button onclick="saveFreeze()">Speichern</button>
+    <button onclick="clearFreeze()">Löschen</button>
+  </div>
+
   <div class="overlay" id="overlay">
     <div id="overlay-content"></div>
     <button onclick="closeOverlay()">Schließen</button>
@@ -152,8 +185,10 @@
 
   <script>
     const channelId = 1228597;
-    const apiKey = "TF002R5TSCHF6RNN";
+    const readKey = "TF002R5TSCHF6RNN";
+    const writeKey = "AIWO5QCDY7MQ4EXE"; // für Freeze
     let allFeeds = [];
+    let freezePeriod = null;
 
     const ctxWeight = document.getElementById('chartWeight').getContext('2d');
     const ctxTemp = document.getElementById('chartTemp').getContext('2d');
@@ -166,7 +201,7 @@
     const chartHum = new Chart(ctxHum, { type: 'line', data: { labels: [], datasets: [{ label: 'Luftfeuchtigkeit (%)', data: [], borderColor: 'green', tension: 0.2 }] }});
 
     async function fetchData() {
-      const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${apiKey}&results=8000`;
+      const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=8000`;
       const res = await fetch(url);
       const data = await res.json();
       allFeeds = data.feeds.map(f => ({
@@ -174,6 +209,7 @@
         temp: parseFloat(f.field1),
         outtemp: parseFloat(f.field2),
         hum: parseFloat(f.field3),
+        freeze: f.field4 === "1",
         batt: parseFloat(f.field5),
         weight: parseFloat(f.field6)
       }));
@@ -191,7 +227,17 @@
       else if (range === '7d') start = new Date(now - 7*24*60*60*1000);
       else if (range === '30d') start = new Date(now - 30*24*60*60*1000);
 
-      const feeds = allFeeds.filter(f => f.time >= start);
+      let feeds = allFeeds.filter(f => f.time >= start);
+
+      // Gewicht einfrieren falls Freeze aktiv
+      if (freezePeriod) {
+        feeds = feeds.map(f => {
+          if (f.time >= freezePeriod.start && f.time <= freezePeriod.end) {
+            return {...f, weight: feeds[0].weight}; // einfrieren auf ersten Wert
+          }
+          return f;
+        });
+      }
 
       const labels = feeds.map(f => f.time.toLocaleString());
       updateChart(chartWeight, labels, feeds.map(f => f.weight));
@@ -274,6 +320,26 @@
     attachClick(chartHum, "hum");
 
     document.getElementById('timeRange').onchange = updateCharts;
+
+    async function saveFreeze() {
+      const start = new Date(document.getElementById('freezeStart').value);
+      const end = new Date(document.getElementById('freezeEnd').value);
+      if (isNaN(start) || isNaN(end) || end <= start) {
+        alert("Bitte gültigen Zeitraum eingeben");
+        return;
+      }
+      freezePeriod = {start, end};
+      await fetch(`https://api.thingspeak.com/update?api_key=${writeKey}&field4=1`);
+      alert("Wartung gespeichert!");
+      updateCharts();
+    }
+
+    async function clearFreeze() {
+      freezePeriod = null;
+      await fetch(`https://api.thingspeak.com/update?api_key=${writeKey}&field4=0`);
+      alert("Wartung gelöscht!");
+      updateCharts();
+    }
 
     fetchData();
   </script>
