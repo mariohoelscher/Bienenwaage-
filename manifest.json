@@ -3,8 +3,7 @@
   "short_name": "Bienen",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#121212",
-  "theme_color": "#121212",
-  "orientation": "portrait",
+  "background_color": "#0f0f10",
+  "theme_color": "#ffd54f",
   "icons": []
 }
