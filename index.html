@@ -7,341 +7,267 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      background: #121212;
-      color: #fff;
+      background-color: #121212;
+      color: #e0e0e0;
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 0;
-    }
-    header {
       text-align: center;
-      padding: 1rem;
-      font-size: 1.5rem;
-      font-weight: bold;
     }
-    .controls {
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-    .controls select {
-      padding: 0.5rem;
-      font-size: 1rem;
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
+    h2 {
+      margin-top: 20px;
     }
     .chart-container {
       width: 90%;
-      max-width: 800px;
-      margin: 1rem auto;
-      background: #1e1e1e;
-      padding: 1rem;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.6);
-    }
-    .chart-container h2 {
-      font-size: 1.2rem;
-      margin-bottom: 0.5rem;
-      display: flex;
-      justify-content: space-between;
+      max-width: 600px;
+      margin: 20px auto;
     }
     canvas {
-      background: #222;
-      border-radius: 8px;
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 10px;
     }
-    /* Overlay für Klickinfos */
-    .overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.8);
-      color: #fff;
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-      flex-direction: column;
-      text-align: center;
-      padding: 2rem;
-    }
-    .overlay button {
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      background: #444;
-      border: none;
-      border-radius: 6px;
-      color: #fff;
-      cursor: pointer;
-    }
-    /* Batterieanzeige */
     .battery {
+      margin: 30px auto;
       width: 200px;
       height: 80px;
       border: 4px solid #fff;
       border-radius: 8px;
       position: relative;
-      margin: 1rem auto;
+      background: #333;
+      cursor: pointer;
     }
     .battery::after {
       content: "";
       position: absolute;
-      top: 20px;
       right: -12px;
+      top: 25px;
       width: 10px;
-      height: 40px;
+      height: 30px;
       background: #fff;
       border-radius: 2px;
     }
     .battery-level {
       height: 100%;
-      background: limegreen;
+      background: linear-gradient(to right, #4caf50, #8bc34a);
       width: 50%;
-      border-radius: 4px 0 0 4px;
-      transition: width 0.5s;
+      border-radius: 4px;
+      transition: width 0.3s;
     }
-    /* Wartungsbereich */
-    .maintenance {
-      width: 90%;
-      max-width: 800px;
-      margin: 2rem auto;
-      padding: 1rem;
-      background: #1e1e1e;
-      border-radius: 12px;
-      text-align: center;
-    }
-    .maintenance input {
-      margin: 0.5rem;
-      padding: 0.3rem;
-    }
-    .maintenance button {
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-      background: #444;
+    /* Overlay für Infos */
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
       color: #fff;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 1000;
+    }
+    .overlay.active {
+      display: flex;
+    }
+    .overlay button {
+      margin-top: 20px;
+      padding: 10px 20px;
       border: none;
-      border-radius: 6px;
+      background: #4caf50;
+      color: #fff;
+      font-size: 16px;
       cursor: pointer;
+      border-radius: 6px;
+    }
+    /* Freeze Button */
+    .freeze-container {
+      margin: 30px auto;
+    }
+    .freeze-btn {
+      font-size: 40px;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+    .freeze-status {
+      margin-top: 10px;
+      font-size: 18px;
+      color: #4fc3f7;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <header>Hölschers Bienen</header>
+  <h1>Hölschers Bienen</h1>
 
-  <div class="controls">
-    <label for="timeRange">Zeitraum: </label>
-    <select id="timeRange">
-      <option value="today">Heute</option>
-      <option value="24h">Letzte 24h</option>
-      <option value="3d">Letzte 3 Tage</option>
-      <option value="7d">Letzte 7 Tage</option>
-      <option value="30d">Letzter Monat</option>
-    </select>
+  <!-- Diagramme -->
+  <div class="chart-container">
+    <h2 id="weightTitle">Gewicht</h2>
+    <canvas id="weightChart"></canvas>
   </div>
 
   <div class="chart-container">
-    <h2 id="title-weight">Gewicht</h2>
-    <canvas id="chartWeight"></canvas>
+    <h2 id="tempTitle">Temperatur</h2>
+    <canvas id="tempChart"></canvas>
   </div>
 
   <div class="chart-container">
-    <h2 id="title-temp">Temperatur (Innen)</h2>
-    <canvas id="chartTemp"></canvas>
+    <h2 id="outsideTempTitle">Außentemperatur</h2>
+    <canvas id="outsideTempChart"></canvas>
   </div>
 
   <div class="chart-container">
-    <h2 id="title-outtemp">Außentemperatur</h2>
-    <canvas id="chartOutTemp"></canvas>
+    <h2 id="humidityTitle">Luftfeuchtigkeit</h2>
+    <canvas id="humidityChart"></canvas>
   </div>
 
-  <div class="chart-container">
-    <h2 id="title-hum">Luftfeuchtigkeit</h2>
-    <canvas id="chartHum"></canvas>
+  <!-- Batterie -->
+  <h2 id="batteryTitle">Batterie</h2>
+  <div class="battery" id="battery">
+    <div class="battery-level" id="batteryLevel"></div>
   </div>
 
-  <div class="chart-container">
-    <h2 id="title-battery">Batterie</h2>
-    <div class="battery" id="battery">
-      <div class="battery-level" id="battery-level"></div>
-    </div>
+  <!-- Freeze Button -->
+  <div class="freeze-container">
+    <button class="freeze-btn" id="freezeBtn">🐝</button>
+    <div class="freeze-status" id="freezeStatus"></div>
   </div>
 
-  <!-- Wartungsbereich -->
-  <div class="maintenance">
-    <h3>Wartung (Freeze Gewicht)</h3>
-    <label>Start: <input type="datetime-local" id="freezeStart"></label>
-    <label>Ende: <input type="datetime-local" id="freezeEnd"></label>
-    <br>
-    <button onclick="saveFreeze()">Speichern</button>
-    <button onclick="clearFreeze()">Löschen</button>
-  </div>
-
+  <!-- Overlay -->
   <div class="overlay" id="overlay">
-    <div id="overlay-content"></div>
+    <div id="overlayContent"></div>
     <button onclick="closeOverlay()">Schließen</button>
   </div>
 
   <script>
     const channelId = 1228597;
-    const readKey = "TF002R5TSCHF6RNN";
-    const writeKey = "AIWO5QCDY7MQ4EXE"; // für Freeze
-    let allFeeds = [];
-    let freezePeriod = null;
+    const readApiKey = "TF002R5TSCHF6RNN";
+    const writeApiKey = "AIWO5QCDY7MQ4EXE";
+    const apiUrl = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readApiKey}&results=500`;
 
-    const ctxWeight = document.getElementById('chartWeight').getContext('2d');
-    const ctxTemp = document.getElementById('chartTemp').getContext('2d');
-    const ctxOutTemp = document.getElementById('chartOutTemp').getContext('2d');
-    const ctxHum = document.getElementById('chartHum').getContext('2d');
-
-    const chartWeight = new Chart(ctxWeight, { type: 'line', data: { labels: [], datasets: [{ label: 'Gewicht (kg)', data: [], borderColor: 'orange', tension: 0.2 }] }});
-    const chartTemp = new Chart(ctxTemp, { type: 'line', data: { labels: [], datasets: [{ label: 'Temperatur (°C)', data: [], borderColor: 'red', tension: 0.2 }] }});
-    const chartOutTemp = new Chart(ctxOutTemp, { type: 'line', data: { labels: [], datasets: [{ label: 'Außentemperatur (°C)', data: [], borderColor: 'blue', tension: 0.2 }] }});
-    const chartHum = new Chart(ctxHum, { type: 'line', data: { labels: [], datasets: [{ label: 'Luftfeuchtigkeit (%)', data: [], borderColor: 'green', tension: 0.2 }] }});
+    let weightChart, tempChart, outsideTempChart, humidityChart;
 
     async function fetchData() {
-      const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=8000`;
-      const res = await fetch(url);
+      const res = await fetch(apiUrl);
       const data = await res.json();
-      allFeeds = data.feeds.map(f => ({
-        time: new Date(f.created_at),
-        temp: parseFloat(f.field1),
-        outtemp: parseFloat(f.field2),
-        hum: parseFloat(f.field3),
-        freeze: f.field4 === "1",
-        batt: parseFloat(f.field5),
-        weight: parseFloat(f.field6)
-      }));
-      updateCharts();
+      const feeds = data.feeds;
+
+      const times = feeds.map(f => new Date(f.created_at));
+      const weight = feeds.map(f => parseFloat(f.field6));
+      const temp = feeds.map(f => parseFloat(f.field1));
+      const outsideTemp = feeds.map(f => parseFloat(f.field2));
+      const humidity = feeds.map(f => parseFloat(f.field3));
+      const battery = feeds.map(f => parseFloat(f.field5));
+
+      // Charts
+      renderChart("weightChart", "Gewicht [kg]", times, weight, v => updateTitle("weightTitle", "Gewicht", v));
+      renderChart("tempChart", "Temperatur [°C]", times, temp, v => updateTitle("tempTitle", "Temperatur", v));
+      renderChart("outsideTempChart", "Außentemperatur [°C]", times, outsideTemp, v => updateTitle("outsideTempTitle", "Außentemperatur", v));
+      renderChart("humidityChart", "Luftfeuchtigkeit [%]", times, humidity, v => updateTitle("humidityTitle", "Luftfeuchtigkeit", v));
+
+      // Batterie
+      const lastBattery = battery[battery.length - 1];
+      updateBattery(lastBattery);
+
+      // Battery overlay
+      document.getElementById("battery").onclick = () => {
+        const prediction = batteryPrediction(battery, times);
+        showOverlay(`<h2>Batterie-Prognose</h2><p>${prediction}</p>`);
+      };
     }
 
-    function updateCharts() {
-      const range = document.getElementById('timeRange').value;
-      const now = new Date();
-      let start;
+    function renderChart(canvasId, label, labels, data, cb) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      if (window[canvasId]) window[canvasId].destroy();
+      window[canvasId] = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data,
+            borderColor: "lightblue",
+            borderWidth: 2,
+            fill: false,
+            spanGaps: true
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { type: "time", time: { unit: "hour" } } }
+        }
+      });
 
-      if (range === 'today') start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      else if (range === '24h') start = new Date(now - 24*60*60*1000);
-      else if (range === '3d') start = new Date(now - 3*24*60*60*1000);
-      else if (range === '7d') start = new Date(now - 7*24*60*60*1000);
-      else if (range === '30d') start = new Date(now - 30*24*60*60*1000);
+      const lastVal = data[data.length - 1];
+      const lastTime = labels[labels.length - 1];
+      cb({ val: lastVal, time: lastTime });
 
-      let feeds = allFeeds.filter(f => f.time >= start);
-
-      // Gewicht einfrieren falls Freeze aktiv
-      if (freezePeriod) {
-        feeds = feeds.map(f => {
-          if (f.time >= freezePeriod.start && f.time <= freezePeriod.end) {
-            return {...f, weight: feeds[0].weight}; // einfrieren auf ersten Wert
-          }
-          return f;
-        });
-      }
-
-      const labels = feeds.map(f => f.time.toLocaleString());
-      updateChart(chartWeight, labels, feeds.map(f => f.weight));
-      updateChart(chartTemp, labels, feeds.map(f => f.temp));
-      updateChart(chartOutTemp, labels, feeds.map(f => f.outtemp));
-      updateChart(chartHum, labels, feeds.map(f => f.hum));
-
-      updateTitles(feeds);
-      updateBattery(feeds);
+      document.getElementById(canvasId).onclick = () => {
+        const vals = data.filter(v => !isNaN(v));
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const avg = (vals.reduce((a,b) => a+b,0)/vals.length).toFixed(2);
+        showOverlay(`<h2>${label}</h2><p>Min: ${min}<br>Max: ${max}<br>Ø: ${avg}</p>`);
+      };
     }
 
-    function updateChart(chart, labels, data) {
-      chart.data.labels = labels;
-      chart.data.datasets[0].data = data;
-      chart.update();
+    function updateTitle(id, label, {val, time}) {
+      const dateStr = new Date(time).toLocaleTimeString();
+      document.getElementById(id).innerText = `${label}: ${val} (${dateStr})`;
     }
 
-    function updateTitles(feeds) {
-      if (feeds.length === 0) return;
-      const last = feeds[feeds.length - 1];
-      document.getElementById('title-weight').innerText = `Gewicht: ${last.weight} kg (${last.time.toLocaleTimeString()})`;
-      document.getElementById('title-temp').innerText = `Temperatur (Innen): ${last.temp} °C (${last.time.toLocaleTimeString()})`;
-      document.getElementById('title-outtemp').innerText = `Außentemperatur: ${last.outtemp} °C (${last.time.toLocaleTimeString()})`;
-      document.getElementById('title-hum').innerText = `Luftfeuchtigkeit: ${last.hum} % (${last.time.toLocaleTimeString()})`;
-      document.getElementById('title-battery').innerText = `Batterie: ${last.batt} V (${last.time.toLocaleTimeString()})`;
+    function updateBattery(voltage) {
+      const percent = Math.max(0, Math.min(100, ((voltage - 8.4) / (12.5 - 8.4)) * 100));
+      document.getElementById("batteryLevel").style.width = percent + "%";
+      document.getElementById("batteryTitle").innerText = `Batterie: ${voltage.toFixed(2)} V (${percent.toFixed(0)}%)`;
     }
 
-    function updateBattery(feeds) {
-      if (feeds.length === 0) return;
-      const last = feeds[feeds.length-1];
-      const level = Math.min(Math.max((last.batt - 8.4) / (12.5 - 8.4), 0), 1) * 100;
-      const el = document.getElementById('battery-level');
-      el.style.width = level + "%";
-      el.style.background = level > 50 ? "limegreen" : (level > 20 ? "orange" : "red");
+    function batteryPrediction(battery, times) {
+      if (battery.length < 2) return "Nicht genug Daten";
+      const first = battery[0], last = battery[battery.length-1];
+      const firstTime = times[0], lastTime = times[times.length-1];
+      const diffHours = (lastTime - firstTime) / 3600000;
+      const diff = last - first;
+      if (diff === 0) return "Kein Verbrauch erkennbar";
+      const rate = diff / diffHours;
+      const remaining = (last - 8.4) / Math.abs(rate);
+      const days = (remaining/24).toFixed(1);
+      return rate < 0 ? `Voraussichtlich leer in ${days} Tagen` : `Steigt aktuell (+${rate.toFixed(3)} V/h)`;
     }
 
-    function openOverlay(content) {
-      document.getElementById('overlay-content').innerHTML = content;
-      document.getElementById('overlay').style.display = "flex";
+    function showOverlay(html) {
+      document.getElementById("overlayContent").innerHTML = html;
+      document.getElementById("overlay").classList.add("active");
     }
+
     function closeOverlay() {
-      document.getElementById('overlay').style.display = "none";
+      document.getElementById("overlay").classList.remove("active");
     }
 
-    function attachClick(chart, fieldName) {
-      chart.canvas.onclick = () => {
-        const feeds = allFeeds.filter(f => chart.data.labels.includes(f.time.toLocaleString()));
-        if (feeds.length === 0) return;
-        const values = feeds.map(f => f[fieldName]).filter(v => !isNaN(v));
-        const min = Math.min(...values);
-        const max = Math.max(...values);
-        const avg = (values.reduce((a,b) => a+b,0)/values.length).toFixed(2);
-        openOverlay(`<h3>${fieldName}</h3><p>Min: ${min}<br>Max: ${max}<br>Ø: ${avg}</p>`);
+    // Freeze Button
+    const freezeBtn = document.getElementById("freezeBtn");
+    const freezeStatus = document.getElementById("freezeStatus");
+    let frozen = false;
+
+    async function toggleFreeze() {
+      frozen = !frozen;
+      const value = frozen ? 1 : 0;
+      await fetch(`https://api.thingspeak.com/update?api_key=${writeApiKey}&field4=${value}`);
+      if (frozen) {
+        freezeBtn.textContent = "🐝❄️";
+        freezeStatus.textContent = "Eingefroren";
+      } else {
+        freezeBtn.textContent = "🐝";
+        freezeStatus.textContent = "";
       }
     }
 
-    document.getElementById('battery').onclick = () => {
-      const feeds = allFeeds.filter(f => f.batt);
-      if (feeds.length < 2) return;
-      const now = new Date();
-      const threeDaysAgo = new Date(now - 3*24*60*60*1000);
-      const recent = feeds.filter(f => f.time >= threeDaysAgo);
-      if (recent.length < 2) {
-        openOverlay("<p>Nicht genug Daten für Prognose</p>");
-        return;
-      }
-      const diff = recent[recent.length-1].batt - recent[0].batt;
-      const days = (recent[recent.length-1].time - recent[0].time)/(24*60*60*1000);
-      const perDay = diff / days;
-      const last = recent[recent.length-1].batt;
-      const remainingDays = perDay < 0 ? (8.4 - last)/perDay : "∞";
-      openOverlay(`<h3>Batterie Prognose</h3>
-        <p>Letzte 3 Tage Trend: ${(perDay).toFixed(3)} V/Tag</p>
-        <p>Restlaufzeit: ${remainingDays==="∞" ? "Steigend" : remainingDays.toFixed(1)+" Tage"}</p>`);
-    };
-
-    attachClick(chartWeight, "weight");
-    attachClick(chartTemp, "temp");
-    attachClick(chartOutTemp, "outtemp");
-    attachClick(chartHum, "hum");
-
-    document.getElementById('timeRange').onchange = updateCharts;
-
-    async function saveFreeze() {
-      const start = new Date(document.getElementById('freezeStart').value);
-      const end = new Date(document.getElementById('freezeEnd').value);
-      if (isNaN(start) || isNaN(end) || end <= start) {
-        alert("Bitte gültigen Zeitraum eingeben");
-        return;
-      }
-      freezePeriod = {start, end};
-      await fetch(`https://api.thingspeak.com/update?api_key=${writeKey}&field4=1`);
-      alert("Wartung gespeichert!");
-      updateCharts();
-    }
-
-    async function clearFreeze() {
-      freezePeriod = null;
-      await fetch(`https://api.thingspeak.com/update?api_key=${writeKey}&field4=0`);
-      alert("Wartung gelöscht!");
-      updateCharts();
-    }
+    freezeBtn.addEventListener("click", toggleFreeze);
 
     fetchData();
+    setInterval(fetchData, 10 * 60 * 1000);
   </script>
 </body>
 </html>
