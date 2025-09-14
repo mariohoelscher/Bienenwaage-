@@ -1,407 +1,208 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Hölschers Bienen — Freeze Toggle</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hölschers Bienen</title>
 
-<!-- Chart.js + date adapter -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <!-- Manifest & Theme für PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#222222">
+  <link rel="apple-touch-icon" href="icon-192.png">
 
-<style>
-:root{--bg:#0f0f10;--card:#171819;--fg:#e8e8e8;--muted:#9aa0a6;--accent:#ffd54f}
-*{box-sizing:border-box}
-body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--fg);padding:12px}
-h1{text-align:center;margin:6px 0}
-.controls{display:flex;justify-content:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-select,button,input{background:var(--card);color:var(--fg);border:1px solid #262626;padding:8px;border-radius:8px}
-.wrapper{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:12px}
-@media(min-width:1000px){.wrapper{grid-template-columns:1fr 1fr}}
-.card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,0.5);position:relative}
-.card h2{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
-.subtitle{color:var(--muted);font-size:13px}
-canvas{width:100% !important;height:220px !important;background:#0b0b0b;border-radius:8px}
-.battery{width:220px;height:64px;border-radius:10px;border:3px solid #bdbdbd;background:#070707;margin:10px auto;position:relative;cursor:pointer}
-.battery::after{content:'';position:absolute;top:18px;right:8px;width:12px;height:28px;background:#bdbdbd;border-radius:2px}
-.battery-level{height:100%;width:10%;border-radius:6px 0 0 6px;transition:width .6s;background:linear-gradient(90deg,#4caf50,#8bc34a);display:flex;align-items:center;justify-content:center;font-weight:700;color:#000}
-.gear{position:fixed;right:12px;top:12px;z-index:60}
-#settingsPanel{display:none;position:fixed;right:12px;top:48px;background:var(--card);padding:10px;border-radius:8px;border:1px solid #333;z-index:80}
-.toast{position:fixed;right:18px;bottom:18px;background:#111;padding:10px 14px;border-radius:8px;color:#fff;display:none;z-index:90}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:300}
-.modal .card{max-width:520px}
-.freeze-area{display:flex;gap:12px;align-items:center;justify-content:center;margin:10px 0}
-.freeze-btn{font-size:36px;background:none;border:none;cursor:pointer}
-.freeze-text{font-weight:700;color:#4fc3f7}
-.small{font-size:13px;color:var(--muted)}
-</style>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { background:#121212; color:white; font-family:Arial,sans-serif; margin:0; padding:0;}
+    h1 { text-align:center; padding:10px;}
+    .chart-container { width:100%; max-width:600px; margin:20px auto;}
+    canvas { background:#1e1e1e; border-radius:10px; width:100%; height:300px;}
+    select { margin:10px auto; display:block; padding:5px;}
+    #freezeBtn { margin:20px auto; display:block; padding:10px; border:none; border-radius:10px;
+                 font-size:18px; cursor:pointer;}
+    #freezeStatus { text-align:center; font-size:16px; margin-top:5px;}
+    .overlay {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.85); color:white;
+      display:none; justify-content:center; align-items:center;
+      flex-direction:column; z-index:1000;
+    }
+    .overlay h3 { margin-bottom:10px;}
+    .overlay button { margin-top:15px; padding:8px 15px; border:none; border-radius:8px;}
+  </style>
 </head>
 <body>
+  <h1>Hölschers Bienen</h1>
 
-<h1>Hölschers Bienen</h1>
+  <select id="timeRange">
+    <option value="day">Heute</option>
+    <option value="3days">Letzte 3 Tage</option>
+    <option value="7days">Letzte 7 Tage</option>
+    <option value="month">Letzter Monat</option>
+  </select>
 
-<div class="controls">
-  <label>Zeitraum:
-    <select id="timeRange">
-      <option value="today">Heute</option>
-      <option value="24h">Letzte 24 Stunden</option>
-      <option value="3d">Letzte 3 Tage</option>
-      <option value="7d">Letzte 7 Tage</option>
-      <option value="30d">Letzter Monat</option>
-    </select>
-  </label>
-  <button id="reloadBtn">🔄 Neu laden</button>
-</div>
-
-<div class="wrapper">
-  <div class="card" id="card-weight">
-    <h2>Gewicht <span id="latestWeight" class="subtitle"></span></h2>
-    <canvas id="chartWeight"></canvas>
+  <div class="chart-container">
+    <h2>Gewicht: <span id="gewichtAktuell"></span></h2>
+    <canvas id="gewichtChart"></canvas>
   </div>
 
-  <div class="card" id="card-temp">
-    <h2>Temperatur innen <span id="latestTemp" class="subtitle"></span></h2>
-    <canvas id="chartTemp"></canvas>
+  <div class="chart-container">
+    <h2>Temperatur innen: <span id="tempInAktuell"></span></h2>
+    <canvas id="tempInChart"></canvas>
   </div>
 
-  <div class="card" id="card-outtemp">
-    <h2>Temperatur außen <span id="latestOutTemp" class="subtitle"></span></h2>
-    <canvas id="chartOutTemp"></canvas>
+  <div class="chart-container">
+    <h2>Temperatur außen: <span id="tempOutAktuell"></span></h2>
+    <canvas id="tempOutChart"></canvas>
   </div>
 
-  <div class="card" id="card-hum">
-    <h2>Luftfeuchtigkeit <span id="latestHum" class="subtitle"></span></h2>
-    <canvas id="chartHum"></canvas>
+  <div class="chart-container">
+    <h2>Luftfeuchtigkeit: <span id="humAktuell"></span></h2>
+    <canvas id="humChart"></canvas>
   </div>
 
-  <div class="card" id="card-bat">
-    <h2>Batterie <span id="latestBat" class="subtitle"></span></h2>
-    <div class="battery" id="batteryBox" title="Batterie anklicken">
-      <div id="batteryLevel" class="battery-level">--%</div>
-    </div>
-    <div id="batteryForecast" class="small" style="text-align:center"></div>
+  <div class="chart-container">
+    <h2>Batterie: <span id="battAktuell"></span></h2>
+    <canvas id="battChart"></canvas>
   </div>
 
-  <div class="card">
-    <h2>Freeze (Gewicht einfrieren)</h2>
-    <div class="freeze-area">
-      <button id="freezeBtn" class="freeze-btn" title="Freeze an/aus">🐝</button>
-      <div id="freezeStatus" class="freeze-text"></div>
-    </div>
-    <div class="small" style="text-align:center">Bei Aktivierung wird das Gewicht ab dem Zeitpunkt auf den aktuellen Wert eingefroren.</div>
+  <!-- Freeze Button -->
+  <button id="freezeBtn">🐝 Freeze</button>
+  <div id="freezeStatus"></div>
+
+  <!-- Overlay für Klick-Infos -->
+  <div class="overlay" id="overlay">
+    <h3 id="overlayTitle"></h3>
+    <p id="overlayContent"></p>
+    <button onclick="closeOverlay()">Schließen</button>
   </div>
-</div>
 
-<div id="modal" class="modal"><div class="card" id="modalCard"></div></div>
-<div id="toast" class="toast"></div>
+  <script>
+    const channelID = "1228597";
+    const readAPIKey = "TF002R5TSCHF6RNN";
+    const writeAPIKey = "AIWO5QCDY7MQ4EXE";
+    const baseURL = "https://api.thingspeak.com/channels/" + channelID + "/feeds.json";
 
-<script>
-/* ================== CONFIG ================== */
-const CHANNEL_ID = 1228597;
-const READ_KEY = "TF002R5TSCHF6RNN";   // public channel key (if needed)
-const WRITE_KEY = "AIWO5QCDY7MQ4EXE";  // write key for field4 (freeze)
-const RESULTS_MAX = 8000;
-const VOLT_MIN = 8.4, VOLT_MAX = 12.5;
-const FETCH_INTERVAL = 10 * 60 * 1000; // 10 min
+    let charts = {};
 
-/* ================== STATE ================== */
-let allFeeds = [];            // raw normalized feeds (chronological)
-let freezeIntervals = [];     // [{start:Date, end:Date|null, freezeValue:number}]
-let charts = {};              // Chart.js instances
-let currentRange = 'today';
+    async function fetchData(range="day") {
+      let url = baseURL + "?api_key=" + readAPIKey + "&results=200";
+      if(range==="3days") url = baseURL + "?api_key=" + readAPIKey + "&days=3";
+      if(range==="7days") url = baseURL + "?api_key=" + readAPIKey + "&days=7";
+      if(range==="month") url = baseURL + "?api_key=" + readAPIKey + "&days=30";
 
-/* ================ HELPERS ================= */
-const $ = id => document.getElementById(id);
-function toast(msg, t=3000){ const el=$('toast'); el.textContent=msg; el.style.display='block'; clearTimeout(el._to); el._to=setTimeout(()=>el.style.display='none',t); }
-function parseNum(v){ const n=parseFloat(v); return isNaN(n)?null:n; }
-function voltPct(v){ if(v===null) return 0; return Math.round(Math.max(0, Math.min(100, ((v - VOLT_MIN)/(VOLT_MAX-VOLT_MIN))*100))); }
-function isoTS(d){ return d.toISOString().slice(0,19).replace('T',' '); }
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if(!data.feeds) return;
 
-/* =========== FETCH & NORMALIZE ============ */
-async function fetchAll(rangeKey = currentRange){
-  // build API URL using days/minutes param so TS filters server-side
-  let url = `https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?results=${RESULTS_MAX}`;
-  if(rangeKey === 'today') url += '&days=1';
-  else if(rangeKey === '24h') url += '&minutes=1440';
-  else if(rangeKey === '3d') url += '&days=3';
-  else if(rangeKey === '7d') url += '&days=7';
-  else if(rangeKey === '30d') url += '&days=30';
+      let labels = data.feeds.map(f => new Date(f.created_at).toLocaleString());
+      let gewicht = data.feeds.map(f => parseFloat(f.field6));
+      let tempIn = data.feeds.map(f => parseFloat(f.field1));
+      let tempOut = data.feeds.map(f => parseFloat(f.field2));
+      let hum = data.feeds.map(f => parseFloat(f.field3));
+      let batt = data.feeds.map(f => parseFloat(f.field5));
 
-  try{
-    const res = await fetch(url);
-    const j = await res.json();
-    const feeds = (j.feeds || []);
-    // normalize and keep chronological order
-    allFeeds = feeds.map(f => ({
-      time: new Date(f.created_at),
-      field1: parseNum(f.field1), // temp inside
-      field2: parseNum(f.field2), // temp outside
-      field3: parseNum(f.field3), // humidity
-      field4: (f.field4 === "1" ? 1 : (f.field4 === "0" ? 0 : null)), // freeze flag events
-      field5: parseNum(f.field5), // battery
-      field6: parseNum(f.field6)  // weight
-    }));
-    computeFreezeIntervalsFromFeeds(); // build intervals from history
-    renderAll();
-  }catch(e){ console.error('fetch fail', e); toast('Fehler beim Laden der Daten'); }
-}
-
-/* ======== Freeze intervals reconstruction ========
-We scan chronological feeds for field4 events:
-- when field4 === 1 and not inside interval -> start new interval at that feed.time
-- when field4 === 0 and inside interval -> close interval at that feed.time
-For each interval we attach freezeValue = last valid weight before or at interval.start (fallback to last known weight)
-*/
-function computeFreezeIntervalsFromFeeds(){
-  freezeIntervals = [];
-  let open = null;
-  for(const f of allFeeds){
-    if(f.field4 === 1 && open === null){
-      // start
-      open = { start: f.time, end: null, freezeValue: null };
-    } else if(f.field4 === 0 && open !== null){
-      open.end = f.time;
-      // compute freezeValue: find last weight <= start
-      const idx = allFeeds.findIndex(x => x.time.getTime() === open.start.getTime());
-      // search backward from idx for last weight
-      let freezeVal = null;
-      for(let i = (idx>=0?idx:0); i>=0; i--){
-        const w = allFeeds[i].field6;
-        if(w !== null && w !== undefined){ freezeVal = w; break; }
+      if(gewicht.length){
+        document.getElementById("gewichtAktuell").innerText = gewicht.at(-1)+" kg ("+labels.at(-1)+")";
+        drawChart("gewichtChart","Gewicht [kg]",labels,gewicht,"Gewicht");
       }
-      if(freezeVal === null){
-        // fallback to last weight in entire dataset
-        for(let i = allFeeds.length-1;i>=0;i--){ if(allFeeds[i].field6!=null){freezeVal=allFeeds[i].field6;break;} }
+      if(tempIn.length){
+        document.getElementById("tempInAktuell").innerText = tempIn.at(-1)+" °C ("+labels.at(-1)+")";
+        drawChart("tempInChart","Temp. innen [°C]",labels,tempIn,"Temp. innen");
       }
-      open.freezeValue = freezeVal;
-      freezeIntervals.push(open);
-      open = null;
+      if(tempOut.length){
+        document.getElementById("tempOutAktuell").innerText = tempOut.at(-1)+" °C ("+labels.at(-1)+")";
+        drawChart("tempOutChart","Temp. außen [°C]",labels,tempOut,"Temp. außen");
+      }
+      if(hum.length){
+        document.getElementById("humAktuell").innerText = hum.at(-1)+" % ("+labels.at(-1)+")";
+        drawChart("humChart","Luftfeuchte [%]",labels,hum,"Luftfeuchtigkeit");
+      }
+      if(batt.length){
+        document.getElementById("battAktuell").innerText = batt.at(-1)+" V ("+labels.at(-1)+")";
+        drawChart("battChart","Batterie [V]",labels,batt,"Batterie",true);
+      }
     }
-  }
-  if(open !== null){
-    // still open interval
-    let freezeVal = null;
-    // find last weight at or before start
-    for(let i = allFeeds.length-1;i>=0;i--){
-      if(allFeeds[i].time <= open.start && allFeeds[i].field6 != null){ freezeVal = allFeeds[i].field6; break; }
-    }
-    if(freezeVal === null){
-      for(let i = allFeeds.length-1;i>=0;i--){ if(allFeeds[i].field6!=null){freezeVal=allFeeds[i].field6;break;} }
-    }
-    open.freezeValue = freezeVal;
-    freezeIntervals.push(open); // end == null (open)
-  }
-  // Update UI freeze button initial state based on last flag presence
-  const lastFlagFeed = [...allFeeds].reverse().find(f => f.field4 === 1 || f.field4 === 0);
-  const isFrozen = lastFlagFeed ? (lastFlagFeed.field4 === 1) : false;
-  setFreezeUi(isFrozen);
-}
 
-/* ============ helper to test if a time is inside any freeze interval =========== */
-function freezeValueForTime(t){
-  for(const iv of freezeIntervals){
-    const start = iv.start;
-    const end = iv.end;
-    if(t >= start && (end === null || t <= end)) return iv.freezeValue;
-  }
-  return null;
-}
-
-/* ================= RENDER ================= */
-function renderAll(){
-  // compute displayed feeds according to dropdown
-  const range = document.getElementById('timeRange').value;
-  currentRange = range;
-
-  const now = new Date();
-  let start;
-  if(range === 'today') start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  else if(range === '24h') start = new Date(now.getTime() - 24*3600*1000);
-  else if(range === '3d') start = new Date(now.getTime() - 3*24*3600*1000);
-  else if(range === '7d') start = new Date(now.getTime() - 7*24*3600*1000);
-  else if(range === '30d') start = new Date(now.getTime() - 30*24*3600*1000);
-  else start = new Date(0);
-
-  const feeds = allFeeds.filter(f => f.time >= start);
-
-  // labels and raw arrays
-  const labels = feeds.map(f => f.time);
-  // weight: apply freeze override when feed.time in any freeze interval -> use freezeValue for that interval
-  const weights = feeds.map(f => {
-    const fv = freezeValueForTime(f.time);
-    return (fv !== null && fv !== undefined) ? fv : f.field6;
-  });
-  const temps = feeds.map(f => f.field1);
-  const outtemps = feeds.map(f => f.field2);
-  const hums = feeds.map(f => f.field3);
-
-  // create/update charts
-  function makeOptions(){
-    return {
-      responsive:true,
-      maintainAspectRatio:false,
-      scales:{
-        x:{ type:'time', time:{ tooltipFormat:'dd.MM. HH:mm'}, ticks:{ color: '#e8e8e8' } },
-        y:{ ticks:{ color: '#e8e8e8' } }
-      },
-      plugins:{ legend:{ display:false } }
-    };
-  }
-
-  // destroy previous
-  Object.values(charts).forEach(c=>{ try{ c.destroy(); }catch(e){} });
-  charts = {};
-
-  charts.weight = new Chart($('chartWeight').getContext('2d'), {
-    type:'line',
-    data:{ labels, datasets:[{ label:'Gewicht (kg)', data:weights, borderColor:'#ffb74d', spanGaps:true }] },
-    options: makeOptions()
-  });
-  charts.temp = new Chart($('chartTemp').getContext('2d'), {
-    type:'line',
-    data:{ labels, datasets:[{ label:'Temp innen (°C)', data:temps, borderColor:'#ff6b6b', spanGaps:true }] },
-    options: makeOptions()
-  });
-  charts.outtemp = new Chart($('chartOutTemp').getContext('2d'), {
-    type:'line',
-    data:{ labels, datasets:[{ label:'Temp außen (°C)', data:outtemps, borderColor:'#42a5f5', spanGaps:true }] },
-    options: makeOptions()
-  });
-  charts.hum = new Chart($('chartHum').getContext('2d'), {
-    type:'line',
-    data:{ labels, datasets:[{ label:'Luftfeuchte (%)', data:hums, borderColor:'#9be7a9', spanGaps:true }] },
-    options: makeOptions()
-  });
-
-  // update latest displays (last valid values)
-  const lastValid = (key) => { for(let i=feeds.length-1;i>=0;i--) if(feeds[i][key] != null) return feeds[i]; return null; }
-  const lvW = lastValid('field6'); if(lvW) $('latestWeight').textContent = `(${lvW.field6.toFixed(2)} kg, ${lvW.time.toLocaleTimeString()})`; else $('latestWeight').textContent='';
-  const lvT = lastValid('field1'); if(lvT) $('latestTemp').textContent = `(${lvT.field1.toFixed(1)} °C, ${lvT.time.toLocaleTimeString()})`; else $('latestTemp').textContent='';
-  const lvO = lastValid('field2'); if(lvO) $('latestOutTemp').textContent = `(${lvO.field2.toFixed(1)} °C, ${lvO.time.toLocaleTimeString()})`; else $('latestOutTemp').textContent='';
-  const lvH = lastValid('field3'); if(lvH) $('latestHum').textContent = `(${lvH.field3.toFixed(0)} %, ${lvH.time.toLocaleTimeString()})`; else $('latestHum').textContent='';
-
-  // battery
-  const lastBatt = (feeds.slice().reverse().find(f => f.field5 != null) || null);
-  if(lastBatt){
-    const pct = voltPct(lastBatt.field5);
-    const level = $('batteryLevel');
-    level.style.width = pct + '%';
-    level.textContent = pct + '%';
-    if(pct > 60) level.style.background = 'linear-gradient(90deg,#28a745,#34d058)';
-    else if(pct > 30) level.style.background = 'linear-gradient(90deg,#ffc107,#ffcd39)';
-    else level.style.background = 'linear-gradient(90deg,#dc3545,#ff6b6b)';
-    $('latestBat').textContent = `(${lastBatt.field5.toFixed(2)} V, ${lastBatt.time.toLocaleTimeString()})`;
-    updateBatteryForecast(); // async
-  } else {
-    $('batteryLevel').style.width = '0%'; $('batteryLevel').textContent = '--%'; $('latestBat').textContent = '';
-  }
-
-  attachClicks(feeds); // clickable overlays (use the displayed feeds)
-}
-
-/* ======= attachClicks - show min/max/avg for current displayed feeds ======= */
-function attachClicks(displayedFeeds){
-  const mapping = [
-    {canvas:'chartWeight', key:'field6', unit:'kg', title:'Gewicht'},
-    {canvas:'chartTemp', key:'field1', unit:'°C', title:'Temperatur innen'},
-    {canvas:'chartOutTemp', key:'field2', unit:'°C', title:'Temperatur außen'},
-    {canvas:'chartHum', key:'field3', unit:'%', title:'Luftfeuchte'}
-  ];
-  mapping.forEach(m=>{
-    const el = $(m.canvas);
-    el.style.cursor = 'pointer';
-    el.onclick = () => {
-      const vals = displayedFeeds.map(f => {
-        // respect freeze override for weight
-        if(m.key === 'field6'){
-          const fv = freezeValueForTime(f.time);
-          return fv !== null && fv !== undefined ? fv : f.field6;
+    function drawChart(id,label,labels,data,name,isBattery=false){
+      const ctx = document.getElementById(id).getContext("2d");
+      if(charts[id]) charts[id].destroy();
+      charts[id] = new Chart(ctx,{
+        type:"line",
+        data:{ labels:labels, datasets:[{ label:label, data:data, borderColor:"yellow", fill:false}]},
+        options:{ responsive:true, maintainAspectRatio:false,
+          onClick: ()=>{ showOverlay(name,data); }
         }
-        return f[m.key];
-      }).filter(v => typeof v === 'number' && !isNaN(v));
-      if(!vals.length){ showModal(`<h3>${m.title}</h3><p>Keine Daten im ausgewählten Zeitraum</p>`); return; }
-      const min = Math.min(...vals), max = Math.max(...vals);
-      const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-      showModal(`<h3>${m.title}</h3><p>Ø: ${avg.toFixed(2)} ${m.unit}<br>Min: ${min.toFixed(2)} ${m.unit}<br>Max: ${max.toFixed(2)} ${m.unit}</p>`);
-    };
-  });
-
-  // battery click shows prognosis (uses last 3 days)
-  $('batteryBox').onclick = async () => {
-    // compute prognosis based on last 3 days from allFeeds
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3*24*3600*1000);
-    const arr = allFeeds.filter(f => f.time >= threeDaysAgo && f.field5 != null).map(f => ({t:f.time, v:f.field5}));
-    if(arr.length < 2){ showModal('<h3>Batterie</h3><p>Nicht genug Daten für Prognose</p>'); return; }
-    const first = arr[0], last = arr[arr.length-1];
-    const hours = (last.t - first.t)/3600000;
-    const slope = (last.v - first.v)/hours; // V/hour
-    if(Math.abs(slope) < 1e-6){ showModal('<h3>Batterie</h3><p>Prognose: stabil</p>'); return; }
-    if(slope < 0){
-      const hoursLeft = (last.v - VOLT_MIN)/Math.abs(slope);
-      const days = Math.floor(hoursLeft/24), hrs = Math.round(hoursLeft%24);
-      showModal(`<h3>Batterie</h3><p>Trend: ${(slope*24).toFixed(3)} V/Tag<br>Restlaufzeit: ${days} Tage ${hrs} Std</p>`);
-    } else {
-      showModal(`<h3>Batterie</h3><p>Trend: +${(slope*24).toFixed(3)} V/Tag (steigend)</p>`);
+      });
     }
-  };
-}
 
-/* ============ Modal ============ */
-function showModal(html){
-  $('modalCard').innerHTML = html + '<div style="text-align:right;margin-top:10px"><button onclick="closeModal()">Schließen</button></div>';
-  $('modal').style.display = 'flex';
-}
-function closeModal(){ $('modal').style.display = 'none'; }
+    function showOverlay(name,data){
+      const overlay = document.getElementById("overlay");
+      const title = document.getElementById("overlayTitle");
+      const content = document.getElementById("overlayContent");
 
-/* =========== Battery Forecast trigger (updateBatteryForecast) =========== */
-/* (kept small; already used above) */
-async function updateBatteryForecast(){
-  // implemented in battery click to avoid repeated fetches; nothing here
-}
+      if(name==="Batterie"){
+        let prognose = calcBattPrognose(data);
+        title.innerText = "Batterie-Prognose";
+        content.innerText = prognose;
+      } else {
+        let avg = (data.reduce((a,b)=>a+b,0)/data.length).toFixed(2);
+        let min = Math.min(...data).toFixed(2);
+        let max = Math.max(...data).toFixed(2);
+        title.innerText = name+" Statistik";
+        content.innerText = "Durchschnitt: "+avg+"\nMin: "+min+"\nMax: "+max;
+      }
+      overlay.style.display="flex";
+    }
 
-/* =========== Freeze Toggle UI & logic =========== */
-function setFreezeUi(isFrozen){
-  const btn = $('freezeBtn'), status = $('freezeStatus');
-  if(isFrozen){
-    btn.textContent = '🐝❄️';
-    status.textContent = 'Eingefroren';
-  } else {
-    btn.textContent = '🐝';
-    status.textContent = '';
-  }
-}
+    function closeOverlay(){ document.getElementById("overlay").style.display="none"; }
 
-async function toggleFreeze(){
-  // Determine new value by reading last flag event in allFeeds if present
-  const lastFlagFeed = [...allFeeds].reverse().find(f => f.field4 === 1 || f.field4 === 0);
-  const currentlyFrozen = lastFlagFeed ? (lastFlagFeed.field4 === 1) : false;
-  const newVal = currentlyFrozen ? 0 : 1;
-  // Optimistic UI
-  setFreezeUi(newVal === 1);
-  try{
-    const res = await fetch(`https://api.thingspeak.com/update?api_key=${WRITE_KEY}&field4=${newVal}`);
-    // ThingSpeak returns "0" or an entry id; we don't need to parse further.
-    // Refresh feeds so intervals are reconstructed from TS history
-    await fetchAll(currentRange);
-    toast(newVal === 1 ? 'Freeze gesetzt' : 'Freeze aufgehoben');
-  }catch(e){
-    console.error('write fail', e);
-    toast('Fehler beim Setzen des Freeze-Flags');
-    // revert UI by re-evaluating last flag
-    computeFreezeIntervalsFromFeeds();
-  }
-}
+    function calcBattPrognose(values){
+      if(values.length<2) return "Keine Daten";
+      let start = values[0];
+      let end = values.at(-1);
+      let diff = end-start;
+      let proStunde = diff/(values.length/6); // ca. 10 min Abstände
+      if(proStunde===0) return "Batterie konstant";
+      let rest = (end-8.4)/(Math.abs(proStunde));
+      if(diff<0){
+        return "Entladung: Batterie hält noch ca. "+rest.toFixed(1)+" Stunden";
+      } else {
+        return "Ladung: Batterie gewinnt Energie";
+      }
+    }
 
-/* =============== UI wiring =============== */
-$('reloadBtn').addEventListener('click', ()=>fetchAll(currentRange));
-$('timeRange').addEventListener('change', ()=>fetchAll(document.getElementById('timeRange').value));
-$('freezeBtn').addEventListener('click', toggleFreeze);
+    document.getElementById("timeRange").addEventListener("change", e=>{
+      fetchData(e.target.value);
+    });
 
-/* =============== INIT =============== */
-fetchAll(currentRange);
-setInterval(()=>fetchAll(currentRange), FETCH_INTERVAL);
+    fetchData();
 
-</script>
+    // Freeze Button Funktion
+    const freezeBtn = document.getElementById("freezeBtn");
+    const freezeStatus = document.getElementById("freezeStatus");
+    let frozen = false;
+
+    freezeBtn.addEventListener("click", async ()=>{
+      frozen = !frozen;
+      let flag = frozen ? 1 : 0;
+      await fetch("https://api.thingspeak.com/update?api_key="+writeAPIKey+"&field4="+flag);
+      if(frozen){
+        freezeBtn.innerText = "🐝❄️ Eingefroren";
+        freezeStatus.innerText = "Eingefroren";
+      } else {
+        freezeBtn.innerText = "🐝 Freeze";
+        freezeStatus.innerText = "";
+      }
+    });
+
+    // Service Worker Registrierung
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('service-worker.js')
+        .then(reg=>console.log("SW registriert:",reg.scope))
+        .catch(err=>console.error("SW Fehler:",err));
+    }
+  </script>
 </body>
 </html>
